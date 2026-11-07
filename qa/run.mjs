@@ -21,7 +21,7 @@ const G = createRequire(import.meta.url)(path.join(root, "gen.js"));
 const toMin = (t) => { const m = String(t).match(/^(\d{1,2})時(?:(\d{1,2})分)?/); return m ? +m[1] * 60 + (+m[2] || 0) : NaN; };
 const WIN = {
   after: (f) => [f.e, f.e + 30],          // 食後：食べ終わってから30分以内（仙台・堺・山形）
-  before: (f) => [f.s - 60, f.s - 25],    // 食前：食べ始める30分〜1時間前（仙台・堺・東京）
+  before: (f) => [f.s - 60, f.s - 30],    // 食前：食べ始める30分〜1時間前（仙台・堺・東京）
   between: (f) => [f.e + 90, f.e + 150],  // 食間：食べ終わって およそ2時間後
   sleep: (f) => [f.sl - 45, f.sl - 15],   // 寝る前：寝るおよそ30分前
 };
@@ -112,7 +112,7 @@ check("README の URL のすぐ後ろに全角の字を続けない（Link check
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".png": "image/png", ".webmanifest": "application/manifest+json" };
 const server = createServer((req, res) => {
   const p = decodeURIComponent(new URL(req.url, "http://x").pathname), f = path.join(root, p === "/" ? "index.html" : p);
-  if (!f.startsWith(root) || !existsSync(f)) { res.writeHead(404); return res.end(); }
+  if ((f !== root && !f.startsWith(root + path.sep)) || !existsSync(f)) { res.writeHead(404); return res.end(); }
   res.writeHead(200, { "content-type": TYPES[path.extname(f)] || "application/octet-stream" }); res.end(readFileSync(f));
 }).listen(0);
 const url = `http://127.0.0.1:${server.address().port}/`;
@@ -121,7 +121,9 @@ const errors = [];
 const TODAY = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
 const dayBefore = (n) => new Date(Date.parse(TODAY) - n * 864e5).toISOString().slice(0, 10);
 async function newPage(w = 390, ctx) {
-  const c = ctx || await browser.newContext({ viewport: { width: w, height: 800 } });
+  let c = ctx;
+  // 日付で決まる問題を見るので、ブラウザの時計を TODAY の昼（日本時間）に止める（QA の途中で0時をまたいでも落ちない）
+  if (!c) { c = await browser.newContext({ viewport: { width: w, height: 800 } }); await c.clock.setFixedTime(new Date(TODAY + "T03:00:00Z")); }
   await c.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
   const p = await c.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
@@ -143,10 +145,16 @@ try {
   // はじめて：遊び方が出る・文字の大きさ
   const p = await newPage();
   check("はじめて開くと遊び方が出る", await p.locator("#howto[open]").count() === 1);
+  check("遊び方にも「医療の相談の代わりではありません」", /医療の相談の代わりではありません/.test(await p.textContent("#howto")));
+  check("遊ぶ前の画面に Ko-fi を出さない（結果の画面だけ）", await p.locator('a[href*="ko-fi"]').count() === 0);
+  check("上級ははじめての日から押せる（今日の5問の前でも）", await p.locator("#go-h").count() === 1);
   await p.click("#howto-ok");
   check("文字の大きさ：はじめは「大きい」（21px）", await p.evaluate(() => getComputedStyle(document.documentElement).fontSize) === "21px");
   await p.click('.fsrow button[data-fs="3"]');
   await p.reload(); await p.waitForTimeout(150);
+  await p.evaluate(() => localStorage.setItem("kusuri-fs", "2.5")); await p.reload(); await p.waitForTimeout(150);
+  check("文字の大きさ：1・2・3 以外（2.5 など）は「大きい」にもどす", await p.evaluate(() => getComputedStyle(document.documentElement).fontSize) === "21px");
+  await p.click('.fsrow button[data-fs="3"]'); await p.reload(); await p.waitForTimeout(150);
   check("文字の大きさ：「とても大きい」にすると開き直しても残る", await p.evaluate(() => getComputedStyle(document.documentElement).fontSize) === "25px" && await p.locator('.fsrow button[data-fs="3"][aria-pressed="true"]').count() === 1);
   await p.click('.fsrow button[data-fs="2"]');
   check("ホームに今日のひとこと（出どころつき）が出る", (await p.textContent("#tip")).includes("今日のひとこと") && /（(仙台市|堺市|東京都薬剤師会)）/.test(await p.textContent("#tip")));
@@ -295,6 +303,11 @@ try {
     await a.click("#hint"); await a.click("#hint");
     await b.click("#hint");
     check("別のタブで使ったヒントの数を減らさない", (await mem(a)).runs.d.cur.hints === 2);
+    // 片方でまちがえ、もう片方で正解しても、まちがいを数える（減点を0にしない）
+    const wj = await a.evaluate(() => { const c = __ky.cur(); return [...document.querySelectorAll(".ch")].findIndex((el, j) => !el.disabled && c.P.opts[j] !== c.P.ans && !c.wrong.includes(c.P.opts[j])); });
+    await a.click(`.ch[data-j="${wj}"]`); await a.waitForTimeout(100);
+    await b.click(`.ch[data-j="${await ansIdx(b)}"]`); await b.waitForTimeout(200);
+    check("別のタブのまちがい・ヒントも合わせて正解を記録する", (await mem(a)).runs.d.res[1]?.m === 3, JSON.stringify((await mem(a)).runs.d.res));
     await ctx.close();
   }
 

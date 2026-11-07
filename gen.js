@@ -106,8 +106,8 @@
         opts: opts(R, ans, ["開けていないので 使う", "半分の量なら 使う", "冷蔵庫で 冷やしてから 使う"]), why: "使用期限が過ぎた薬は、開けていなくても使いません。", src: ["sakai"], facts: { t: "fixed" } }; } },
     { id: "megusuri", lv: 1, name: "目薬の量", look: "目に入る量は 思ったより 少ないです。", make(R) {
       const ans = "1滴";
-      return { bag: [`目薬 1日${ri(R, 2, 4)}回`, pick(R, ["両目に さす", "右目に さす", "左目に さす"])], scene: pick(R, ["目薬を さします。", "朝の目薬を さします。", "寝る前の目薬を さします。"]), q: "1回に 何滴で 十分？", ans,
-        opts: opts(R, ans, ["3滴", "5滴", "目から あふれるまで"]), why: "目薬は、1回1滴で十分です。", src: ["sakai"], facts: { t: "fixed" } }; } },
+      return { bag: [`目薬 1日${ri(R, 2, 4)}回`, pick(R, ["両目に さす", "右目に さす", "左目に さす"])], scene: pick(R, ["目薬を さします。", "朝の目薬を さします。", "寝る前の目薬を さします。"]), q: "片目に 1回 何滴で 十分？", ans,
+        opts: opts(R, ans, ["3滴", "5滴", "目から あふれるまで"]), why: "目薬は、片目に1回1滴で十分です（両目なら、それぞれに1滴）。", src: ["sakai"], facts: { t: "fixed" } }; } },
     { id: "megusuri2", lv: 1, name: "目薬を2本", look: "続けてさすと、先の目薬が 流れてしまいます。", make(R) {
       const ans = "5分ほど あけて、もう1本を さす";
       const n = ri(R, 2, 4), t = pick(R, ["朝", "昼", "夜"]);
@@ -166,7 +166,7 @@
 
   // 1問を作る。tag は「種類|種」（例 "shokugo|2026-11-07:d0"）。同じ tag ならいつも同じ問題
   function make(tag) {
-    const [kind] = String(tag).split("|"), k = BY[kind];
+    const [kind] = String(tag).split("|"), k = Object.prototype.hasOwnProperty.call(BY, kind) ? BY[kind] : null;
     if (!k) return null;
     const p = k.make(rng(seedOf(tag)));
     return { tag, kind, lv: k.lv, name: k.name, look: k.look, ...p };

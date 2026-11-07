@@ -322,6 +322,7 @@ html.a11y-say body{padding-bottom:calc(64px + env(safe-area-inset-bottom,0px))!i
   </ol>
   <p>例：「食間」は食事の途中ではなく、食事のおよそ2時間後。</p>
   <p>ゲームの中の薬は、たとえです。本当の薬の飲み方は、医師・薬剤師の指示と、薬の説明書に従ってください。</p>
+  <p id="howto-note">このゲームは医療の相談の代わりではありません。</p>
   <p>今日の5問はだれでも同じで、1日1回。時間制限はありません。文字の大きさは、はじめの画面の「文字」で変えられます。</p>
   <p><a id="fb2" target="_blank" rel="noopener">感想を送る</a></p>
   <button class="main" id="howto-ok" style="width:100%">わかった</button>
@@ -336,7 +337,7 @@ const KEY = "kusuri-v1", FSKEY = "kusuri-fs", EPOCH = "2026-11-07";
 const G = window.KUSURI, LV = G.LV;
 
 // ---- 文字の大きさ（この端末だけ。記録とは別に置く。はじめは「大きい」）----
-function fsGet() { try { const v = +localStorage.getItem(FSKEY); return v >= 1 && v <= 3 ? v : 2; } catch (e) { return 2; } }
+function fsGet() { try { const v = +localStorage.getItem(FSKEY); return Number.isInteger(v) && v >= 1 && v <= 3 ? v : 2; } catch (e) { return 2; } }
 function fsSet(v) { try { localStorage.setItem(FSKEY, String(v)); } catch (e) {} document.documentElement.classList.remove("fs1", "fs2", "fs3"); document.documentElement.classList.add("fs" + v); }
 document.documentElement.classList.remove("fs1", "fs2", "fs3"); document.documentElement.classList.add("fs" + fsGet());
 
@@ -411,7 +412,7 @@ function load() {
   return tidy(s);
 }
 // 引き継ぎコードなどから入った値を正しい形に直す（数の所に文字が入っていても画面に出さない）
-const num = (v) => (Number.isFinite(+v) && +v >= 0 ? Math.floor(+v) : 0);
+const num = (v) => ((typeof v === "number" || typeof v === "string") && Number.isFinite(+v) && +v >= 0 ? Math.floor(+v) : 0);
 function tidy(s) {
   s.ebest = num(s.ebest);
   for (const q of ["days", "hdays", "adays", "dex", "runs", "kofi", "ach"]) if (!s[q] || typeof s[q] !== "object" || Array.isArray(s[q])) s[q] = {};
@@ -425,7 +426,7 @@ function tidy(s) {
     const r = s.runs[m]; if (r === null) continue;
     if (typeof r !== "object" || !okDate(r.date) || !Array.isArray(r.list) || !r.list.every(okTag) || !Array.isArray(r.res) || !r.res.every((x) => x && typeof x === "object" && Number.isInteger(x.m) && x.m >= 0)) { delete s.runs[m]; continue; }
     if (r.cur != null && (typeof r.cur !== "object" || !Array.isArray(r.cur.wrong))) r.cur = null; else if (r.cur) r.cur.hints = num(r.cur.hints);
-    if ("life" in r) r.life = num(r.life);
+    if ("life" in r) r.life = Math.min(ELIFE, num(r.life));
   }
   return s;
 }
@@ -476,7 +477,7 @@ const buzz = (n = 12) => { try { if (!(window.A11y && A11y.on("calm"))) navigato
 const esc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;");
 const toTop = () => window.scrollTo(0, 0);
 // 引き継ぎ（transfer.js）は data-hk を押すと開く
-const footer = () => `<footer><a href="#" id="f-how">遊び方</a><a href="#" id="f-about">このゲームについて</a><a href="#" data-a11y-open>見やすさ</a><a href="#" data-hk>引き継ぎ</a><a href="${FEEDBACK}" target="_blank" rel="noopener">感想を送る</a><a href="https://ko-fi.com/satouaaaaa" target="_blank" rel="noopener">Ko-fi で応援</a></footer>`;
+const footer = () => `<footer><a href="#" id="f-how">遊び方</a><a href="#" id="f-about">このゲームについて</a><a href="#" data-a11y-open>見やすさ</a><a href="#" data-hk>引き継ぎ</a><a href="${FEEDBACK}" target="_blank" rel="noopener">感想を送る</a></footer>`;
 function bindFooter() { const h = $("f-how"); if (h) h.onclick = (e) => { e.preventDefault(); openHow(); }; const a = $("f-about"); if (a) a.onclick = (e) => { e.preventDefault(); about(); }; }
 function openHow() { $("fb2").href = FEEDBACK; const d = $("howto"); if (d.showModal) d.showModal(); else d.setAttribute("open", ""); }
 $("howto-ok").onclick = () => { const d = $("howto"); d.close ? d.close() : d.removeAttribute("open"); save((s) => { s.tut = true; }); };
@@ -495,7 +496,7 @@ function home() {
     <div class="tip" id="tip"><b>今日のひとこと：${tip[0]}</b><br>${tip[1]}</div>
     ${done ? `<div class="share">今日の結果　${done.m.map(sq).join("")}</div>` : ""}
     <button class="main" id="go-d">${done ? "今日の結果を見る" : rd ? `続きから（${rd.res.length + 1}問目）` : `今日の5問 <small>第${dayNo(k)}回</small>`}</button>
-    ${done ? `<button class="main alt" id="go-h">${hdone ? "上級の結果を見る" : rh ? "上級の続きから" : "上級：むずかしい3問（ヒントなし）"}</button>` : ""}
+    <button class="main alt" id="go-h">${hdone ? "上級の結果を見る" : rh ? "上級の続きから" : "上級：むずかしい3問（ヒントなし）"}</button>
     <button class="main alt" id="go-e">${re ? `とことんの続きから（${re.res.length + 1}問目）` : "とことん：何問続けて解ける？"}${s.ebest ? ` <small>自己ベスト ${s.ebest}問</small>` : ""}</button>
     <div class="row"><button class="sub" id="go-p">練習（何度でも）</button><button class="sub" id="go-dex">ことば帳 ${nk}/${G.KINDS.length}</button></div>
     <div class="row"><button class="sub" id="go-cal" aria-label="カレンダー${late.length ? `（あとから遊べる日 ${late.length}）` : ""}">カレンダー${late.length ? ` <span class="badge">▶${late.length}</span>` : ""}</button><button class="sub" id="go-ach">実績 ${ag}/${ACH.length}</button></div>
@@ -548,7 +549,7 @@ function startRun(mode, opt) {
 
 // 今の1問：{ i, date, id, tag, P(問題), wrong:[選んだまちがい], hints, done }
 let cur = null;
-const same = (r) => r && cur && r.date === cur.date && r.id === cur.id && r.res.length === cur.i && r.list[cur.i] === cur.tag; // 保存した進み具合が、この画面と同じ問題か
+const same = (r) => r && cur && r.date === cur.date && r.id === cur.id && r.res.length === cur.i && r.list[cur.i] === cur.tag && !r.over; // 保存した進み具合が、この画面と同じ問題か
 // 途中の保存：別のタブで使ったヒント・まちがいも減らさない（多いほう・合わせたほうを残す）
 function keep() { save((s) => { const r = s.runs[MODE]; if (!same(r)) return; const was = r.cur && r.cur.i === cur.i && r.cur.tag === cur.tag ? r.cur : { wrong: [], hints: 0 }; cur.hints = Math.max(cur.hints, was.hints || 0); for (const w of was.wrong || []) if (!cur.wrong.includes(w)) cur.wrong.push(w); r.cur = { i: cur.i, tag: cur.tag, wrong: cur.wrong.slice(), hints: cur.hints }; }); }
 const lifeStr = (n) => "🌸".repeat(Math.max(0, n)) + `<span class="off">${"🌸".repeat(Math.max(0, ELIFE - n))}</span>`;
@@ -572,7 +573,7 @@ function play() {
     </header>
     ${showTip ? `<div class="tip"><b>今日のひとこと：${tip[0]}</b><br>${tip[1]}</div>` : ""}
     <div class="pad"><div class="bag" role="img" aria-label="薬の袋：${esc(P.bag.join("、"))}"><div class="bh"><span>おくすり</span><span aria-hidden="true">💊</span></div>${P.bag.map((l) => `<p class="bl">${esc(l)}</p>`).join("")}</div>
-      <p class="scene" id="scene">${esc(P.scene)}</p><p class="q" id="q" data-a11y-say aria-label="${esc("薬の袋：" + P.bag.join("、") + "。" + P.scene + "。" + P.q)}">${esc(P.q)}</p></div>
+      <p class="scene" id="scene">${esc(P.scene)}</p><p class="q" id="q" data-a11y-say aria-label="${esc("薬の袋：" + P.bag.join("、") + "。" + P.scene + "。" + P.q + "。選び肢：" + P.opts.join("、"))}">${esc(P.q)}</p></div>
     <div class="choices" id="choices">${P.opts.map((t, j) => `<button class="ch" data-j="${j}" aria-label="${esc(t)}">${esc(t)}</button>`).join("")}</div>
     <p class="msg" id="msg" role="status" aria-live="polite"></p>
     <div id="hintbox"></div>
@@ -618,19 +619,21 @@ function choose(j) {
   }
   // 正解
   cur.done = true; buzz([10, 40, 10]);
-  const m = missOf(), st = starsOf(m), P = cur.P;
-  const s = save((s) => { const r = s.runs[MODE]; if (!same(r)) return; r.res.push({ m }); r.cur = null; s.dex[P.kind] = (s.dex[P.kind] || 0) + 1; });
-  const r = s.runs[MODE], fin = r && r.res.length >= r.list.length;
+  const P = cur.P; let m = missOf();
+  // 別のタブで同じ問題に使ったヒント・まちがいを合わせてから数える（減点を0にしない）
+  const s = save((s) => { const r = s.runs[MODE]; if (!same(r)) return; const was = r.cur && r.cur.i === cur.i && r.cur.tag === cur.tag ? r.cur : null; if (was) { cur.hints = Math.max(cur.hints, was.hints || 0); for (const w of was.wrong || []) if (!cur.wrong.includes(w)) cur.wrong.push(w); } m = missOf(); r.res.push({ m }); r.cur = null; s.dex[P.kind] = (s.dex[P.kind] || 0) + 1; });
+  const st = starsOf(m), r = s.runs[MODE], fin = r && r.res.length >= r.list.length;
   document.querySelectorAll(".ch").forEach((b) => { b.disabled = true; if (P.opts[+b.dataset.j] === P.ans) b.classList.add("ok"); });
   if ($("hint")) $("hint").disabled = true;
   $("hintbox").innerHTML = ""; $("msg").className = "msg"; $("msg").textContent = "";
+  if ($("q")) $("q").removeAttribute("data-a11y-say"); // 答えたあとは、正解の知らせと説明を読む
   $("after").innerHTML = `<div class="verdict" role="status">
-    <div class="hd">✓ 正解！ ${starStr(st)}</div>
-    <p class="why"><b>答え：</b>${esc(P.why)}</p>
+    <div class="hd" data-a11y-say>✓ 正解！ ${starStr(st)}</div>
+    <p class="why" data-a11y-say><b>答え：</b>${esc(P.why)}</p>
     ${srcHtml(P)}
     <button class="main ok" id="next">${fin ? "結果を見る" : "次の問題へ"}</button></div>`;
   $("next").onclick = play;
-  setTimeout(() => { if ($("next") && cur && cur.done && cur.tag === P.tag) $("next").scrollIntoView({ behavior: "smooth", block: "nearest" }); }, 60);
+  setTimeout(() => { if ($("next") && cur && cur.done && cur.tag === P.tag) $("next").scrollIntoView({ behavior: A11y.on("calm") ? "auto" : "smooth", block: "nearest" }); }, 60);
 }
 // とことんで🌸が無いときにまちがえた：答えと説明を見せて終える
 function lose() {
