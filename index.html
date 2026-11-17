@@ -69,6 +69,8 @@ button.sub:disabled,button.main:disabled{opacity:.45;cursor:default}
 .tip b{color:var(--shu2)}
 /* 選び肢 */
 .choices{display:grid;grid-template-columns:1fr;gap:12px}
+.sure-row{display:flex;justify-content:flex-end;margin:0 0 .5rem}
+.sure-res{margin:.3rem 0;font-weight:700}
 .ch{all:unset;box-sizing:border-box;cursor:pointer;position:relative;min-height:72px;display:flex;align-items:center;justify-content:center;border-radius:16px;background:var(--paper);border:3px solid var(--ai);box-shadow:0 5px 0 #24427a55;font-weight:900;font-size:1.1rem;line-height:1.45;color:var(--ink);padding:.9rem 1rem 1rem;text-align:center}
 .ch:active{transform:translateY(3px);box-shadow:0 2px 0 #24427a55}
 .ch small{font-size:.55em;margin-left:2px}
@@ -320,7 +322,8 @@ html.a11y-say body{padding-bottom:calc(64px + env(safe-area-inset-bottom,0px))!i
 })();
 </script>
 <!-- a11y:end -->
-<script src="transfer.js" data-game="kusuri-yomi" data-keys="kusuri-v1,kusuri-fs"></script>
+<script src="transfer.js" data-game="kusuri-yomi" data-keys="kusuri-v1,kusuri-fs,kusuri-depth"></script>
+<script src="depth.js" data-game="kusuri-yomi" data-key="kusuri-depth"></script>
 </head>
 <body>
 <div class="wrap" id="app"></div>
@@ -334,6 +337,7 @@ html.a11y-say body{padding-bottom:calc(64px + env(safe-area-inset-bottom,0px))!i
   <p>例：「食間」は食事の途中ではなく、食事のおよそ2時間後。</p>
   <p>ゲームの中の薬は、たとえです。本当の薬の飲み方は、医師・薬剤師の指示と、薬の説明書に従ってください。</p>
   <p id="howto-note">このゲームは医療の相談の代わりではありません。</p>
+  <p>自信があるときは、選ぶ前に「🎯 自信あり？」を押します（押さなくても遊べます）。まちがえた問題は、次の日から「復習」にもどってきます。</p>
   <p>今日の5問はだれでも同じで、1日1回。時間制限はありません。文字の大きさは、はじめの画面の「文字」で変えられます。</p>
   <p><a id="fb2" target="_blank" rel="noopener">感想を送る</a></p>
   <button class="main" id="howto-ok" style="width:100%">わかった</button>
@@ -346,6 +350,7 @@ const SITE = "https://satou-aaaaa.github.io/kusuri-yomi/";
 const FEEDBACK = "https://github.com/satou-aaaaa/kusuri-yomi/issues/new?template=feedback.yml";
 const KEY = "kusuri-v1", FSKEY = "kusuri-fs", EPOCH = "2026-11-07";
 const G = window.KUSURI, LV = G.LV;
+Depth.setValid((t) => { if (!Object.prototype.hasOwnProperty.call(G.BY, String(t).split("|")[0])) return false; G.make(t); return true; }); // 作り直せない鍵（引き継ぎ・消えた種類）は復習に数えない
 
 // ---- 文字の大きさ（この端末だけ。記録とは別に置く。はじめは「大きい」）----
 function fsGet() { try { const v = +localStorage.getItem(FSKEY); return Number.isInteger(v) && v >= 1 && v <= 3 ? v : 2; } catch (e) { return 2; } }
@@ -438,6 +443,8 @@ function tidy(s) {
     if (typeof r !== "object" || !okDate(r.date) || !Array.isArray(r.list) || !r.list.every(okTag) || !Array.isArray(r.res) || !r.res.every((x) => x && typeof x === "object" && Number.isInteger(x.m) && x.m >= 0)) { delete s.runs[m]; continue; }
     if (r.cur != null && (typeof r.cur !== "object" || !Array.isArray(r.cur.wrong))) r.cur = null; else if (r.cur) r.cur.hints = num(r.cur.hints);
     if ("life" in r) r.life = Math.min(ELIFE, num(r.life));
+    if (r.cur) r.cur.jd = r.cur.jd && typeof r.cur.jd === "object" && r.cur.jd.sure === true ? { sure: true, ok: r.cur.jd.ok === true, text: "" } : null;
+    r.ds = r.ds && typeof r.ds === "object" ? { n: num(r.ds.n), ok: Math.min(num(r.ds.ok), num(r.ds.n)) } : { n: 0, ok: 0 }; // この回の「自信あり」の数と当たり
   }
   return s;
 }
@@ -455,7 +462,7 @@ function lateDays(s, k = todayKey()) { const out = []; let d = k; for (let i = 0
 function tally(s) {
   const dk = Object.values(s.days).filter((r) => r && Array.isArray(r.m));
   return { days: Object.keys(s.days).length, played: playedDays(s), clean: dk.filter((r) => r.m.length && r.m.every((m) => m === 0)).length, hard: Object.keys(s.hdays).length,
-    late: Object.keys(s.adays).length, kinds: Object.keys(s.dex).filter((k) => G.BY[k] && s.dex[k] > 0).length, solved: solvedAll(s), ebest: s.ebest || 0 };
+    late: Object.keys(s.adays).length, kinds: Object.keys(s.dex).filter((k) => G.BY[k] && s.dex[k] > 0).length, solved: solvedAll(s), ebest: s.ebest || 0, sureOk: Depth.stats().sureOk, learned: Depth.stats().learned };
 }
 const ACH = [
   ["clean1", "読みとり上手", "今日の5問を、まちがいもヒントもなしで解く", 0, "clean", 1],
@@ -464,6 +471,8 @@ const ACH = [
   ["hard10", "上級の常連", "上級を10日解く", 0, "hard", 10],
   ["e10", "とことん10問", "とことんで10問続けて解く", 0, "ebest", 10],
   ["e30", "とことん30問", "とことんで30問続けて解く", 0, "ebest", 30],
+  ["sure10", "たしかの目", "「🎯 自信あり」で10回当てる", 0, "sureOk", 10],
+  ["learn5", "覚えなおし", "復習で5問を覚えた", 0, "learned", 5],
   ["k5", "ことば5つ", "ことば帳に5つ", 1, "kinds", 5],
   ["kall", "ことば帳ぜんぶ", `ことば帳の${G.KINDS.length}こを全部集める`, 1, "kinds", G.KINDS.length],
   ["s100", "100問", "解いた問題が合わせて100問", 1, "solved", 100],
@@ -473,7 +482,7 @@ const ACH = [
   ["late1", "あとから1日", "取りこぼした日をあとから遊ぶ", 2, "late", 1],
 ];
 const AGRP = ["腕前", "集める", "続ける"];
-const AUNIT = { clean: "日", hard: "日", days: "日", played: "日", late: "日", kinds: "種類", solved: "問", ebest: "問" };
+const AUNIT = { clean: "日", hard: "日", days: "日", played: "日", late: "日", kinds: "種類", solved: "問", ebest: "問", sureOk: "回", learned: "問" };
 const achGot = (s) => { const t = tally(s); return ACH.filter((a) => t[a[4]] >= a[5]).map((a) => a[0]); };
 // あと少しの実績：まだの実績のうち、いちばん目標に近いもの1つ（ゴールに近いほど人はがんばる。Kivetz ほか 2006）
 function nextAch(s) {
@@ -502,7 +511,7 @@ function home() {
   for (const m of Object.keys(s.runs)) { const r = s.runs[m]; if (m !== "p" && r && (doneOf(r) || (m === "e" && r.over))) { MODE = m; return finish(); } }
   const late = lateDays(s, k), ag = achGot(s).length, fs = fsGet(), tip = tipOf(k), nk = Object.keys(s.dex).filter((x) => G.BY[x]).length;
   const rd = s.runs.d && s.runs.d.date === k ? s.runs.d : null, rh = s.runs.h && s.runs.h.date === k ? s.runs.h : null, re = s.runs.e && !doneOf(s.runs.e) ? s.runs.e : null;
-  const st = streak(s.days);
+  const st = streak(s.days), rv = Depth.count();
   app.innerHTML = `
     <h1 class="title">薬の袋<span>よみ</span></h1>
     <p class="lead" data-a11y-say>薬の袋の言葉を読んで、いつ・いくつ飲むかを選ぶ。<br>だれでも同じ1日5問。</p>
@@ -510,6 +519,7 @@ function home() {
     <div class="tip" id="tip"><b>今日のひとこと：${tip[0]}</b><br>${tip[1]}</div>
     ${done ? `<div class="share">今日の結果　${done.m.map(sq).join("")}</div>` : ""}
     <button class="main" id="go-d">${done ? "今日の結果を見る" : rd ? `続きから（${rd.res.length + 1}問目）` : `今日の5問 <small>第${dayNo(k)}回</small>`}</button>
+    ${s.runs.r && !doneOf(s.runs.r) ? `<button class="main alt" id="go-r">復習の続きから（${s.runs.r.res.length + 1}問目）</button>` : rv ? `<button class="main alt" id="go-r">復習 ${rv}問 <small>まちがえた問題がもどってきた</small></button>` : ""}
     <button class="main alt" id="go-h">${hdone ? "上級の結果を見る" : rh ? "上級の続きから" : "上級：むずかしい3問（ヒントなし）"}</button>
     <button class="main alt" id="go-e">${re ? `とことんの続きから（${re.res.length + 1}問目）` : "とことん：何問続けて解ける？"}${s.ebest ? ` <small>自己ベスト ${s.ebest}問</small>` : ""}</button>
     <div class="row"><button class="sub" id="go-p">練習（何度でも）</button><button class="sub" id="go-dex">ことば帳 ${nk}/${G.KINDS.length}</button></div>
@@ -521,6 +531,7 @@ function home() {
   if ($("go-h")) $("go-h").onclick = () => (hdone ? result("h", k) : k === todayKey() ? startRun("h") : home());
   $("go-e").onclick = () => startRun("e");
   $("go-p").onclick = practiceMenu;
+  if ($("go-r")) $("go-r").onclick = () => startRun("r");
   $("go-dex").onclick = book;
   $("go-cal").onclick = () => cal();
   $("go-ach").onclick = achView;
@@ -547,6 +558,8 @@ function startRun(mode, opt) {
       s.runs[runKey("a", opt)] = { mode, date: opt, list: G.dailyTags(opt), res: [], cur: null, id: "a" + opt, a0: achGot(s) };
       return;
     }
+    // 復習：日の来た問題（depth.js）。種類をまぜて多くて10問。今日の記録・連続・Ko-fi には数えない。途中の復習は、日が替わっても続きから
+    if (mode === "r") { const r0 = s.runs.r; if (r0 && !doneOf(r0)) return; const list = Depth.due(); if (!list.length) { ng = "r"; return; } s.runs.r = { mode, date: k, list, res: [], cur: null, id: rid(), a0: achGot(s) }; return; }
     if (mode === "e") { const re = s.runs.e; if (re && !doneOf(re)) return; s.runs.e = { mode, date: k, list: endlessList(), res: [], cur: null, life: ELIFE, id: rid(), a0: achGot(s) }; return; }
     if (mode !== "p" && s.runs[mode] && s.runs[mode].date === k) return; // 続きから
     if ((mode === "d" && s.days[k]) || (mode === "h" && s.hdays[k])) return; // 別のタブで今日の分を終えていたら、もう一度は始めない
@@ -556,6 +569,7 @@ function startRun(mode, opt) {
     else list = randomTags(opt, 5, rid());
     s.runs[mode] = { mode, date: k, list, res: [], cur: null, id: rid(), a0: achGot(s) };
   });
+  if (ng === "r") { toast("今日の復習はありません"); return home(); }
   if (ng) return cal();
   MODE = runKey(mode, opt);
   play();
@@ -565,7 +579,10 @@ function startRun(mode, opt) {
 let cur = null;
 const same = (r) => r && cur && r.date === cur.date && r.id === cur.id && r.res.length === cur.i && r.list[cur.i] === cur.tag && !r.over; // 保存した進み具合が、この画面と同じ問題か
 // 途中の保存：別のタブで使ったヒント・まちがいも減らさない（多いほう・合わせたほうを残す）
-function keep() { save((s) => { const r = s.runs[MODE]; if (!same(r)) return; const was = r.cur && r.cur.i === cur.i && r.cur.tag === cur.tag ? r.cur : { wrong: [], hints: 0 }; cur.hints = Math.max(cur.hints, was.hints || 0); for (const w of was.wrong || []) if (!cur.wrong.includes(w)) cur.wrong.push(w); r.cur = { i: cur.i, tag: cur.tag, wrong: cur.wrong.slice(), hints: cur.hints }; }); }
+// まちがえた・ヒントを使ったその時に復習へ入れる（とことんで降りる・閉じるなど、解き終えずにやめても残る）
+function early() { if (cur && !cur.done && ((cur.wrong && cur.wrong.length) || cur.hints)) Depth.mark(cur.tag, 1, cur.P.name); }
+// keep は保存した回が同じ問題のときだけ early する（古いタブが復習の段を戻さない）
+function keep() { let ok = false; save((s) => { const r = s.runs[MODE]; if (!same(r)) return; ok = true; const was = r.cur && r.cur.i === cur.i && r.cur.tag === cur.tag ? r.cur : { wrong: [], hints: 0 }; cur.hints = Math.max(cur.hints, was.hints || 0); for (const w of was.wrong || []) if (!cur.wrong.includes(w)) cur.wrong.push(w); if (!cur.jd && was.jd) cur.jd = was.jd; r.cur = { i: cur.i, tag: cur.tag, wrong: cur.wrong.slice(), hints: cur.hints, jd: cur.jd }; }); if (ok) early(); }
 const lifeStr = (n) => "🌸".repeat(Math.max(0, n)) + `<span class="off">${"🌸".repeat(Math.max(0, ELIFE - n))}</span>`;
 const lifeOf = () => { const r = load().runs.e; return r ? r.life || 0 : 0; };
 const missOf = () => cur.wrong.length + cur.hints;
@@ -577,8 +594,8 @@ function play() {
   if (run.mode === "a" && s.days[run.date]) { save((s2) => { s2.runs[MODE] = null; }); toast("この日は別の画面で遊び終えています"); return home(); }
   const tag = run.list[i], P = G.make(tag), hard = run.mode === "h";
   const saved = run.cur && run.cur.i === i && run.cur.tag === tag ? run.cur : { wrong: [], hints: 0 };
-  cur = { i, date: run.date, id: run.id, tag, P, wrong: (saved.wrong || []).filter((w) => P.opts.includes(w) && w !== P.ans), hints: saved.hints || 0, done: false };
-  const label = run.mode === "d" ? LV[P.lv] : run.mode === "a" ? `あとから・${LV[P.lv]}` : hard ? "上級" : run.mode === "e" ? `とことん・${LV[P.lv]}` : `練習・${LV[P.lv]}`;
+  cur = { i, date: run.date, id: run.id, tag, P, wrong: (saved.wrong || []).filter((w) => P.opts.includes(w) && w !== P.ans), hints: saved.hints || 0, jd: saved.jd || null, done: false };
+  const label = run.mode === "d" ? LV[P.lv] : run.mode === "a" ? `あとから・${LV[P.lv]}` : hard ? "上級" : run.mode === "r" ? `復習・${LV[P.lv]}` : run.mode === "e" ? `とことん・${LV[P.lv]}` : `練習・${LV[P.lv]}`;
   const showTip = (run.mode === "d" || run.mode === "a") && i === 0, tip = tipOf(run.date);
   app.innerHTML = `
     <header><button class="icon" id="back" aria-label="もどる">←</button>
@@ -588,6 +605,7 @@ function play() {
     ${showTip ? `<div class="tip"><b>今日のひとこと：${tip[0]}</b><br>${tip[1]}</div>` : ""}
     <div class="pad"><div class="bag" role="img" aria-label="薬の袋：${esc(P.bag.join("、"))}"><div class="bh"><span>おくすり</span><span aria-hidden="true">💊</span></div>${P.bag.map((l) => `<p class="bl">${esc(l)}</p>`).join("")}</div>
       <p class="scene" id="scene">${esc(P.scene)}</p><p class="q" id="q" data-a11y-say aria-label="${esc("薬の袋：" + P.bag.join("、") + "。" + P.scene + "。" + P.q + "。選び肢：" + P.opts.join("、"))}">${esc(P.q)}</p></div>
+    ${cur.wrong.length ? "" : `<div class="sure-row">${Depth.sureHtml()}</div>`}
     <div class="choices" id="choices">${P.opts.map((t, j) => `<button class="ch" data-j="${j}" aria-label="${esc(t)}">${esc(t)}</button>`).join("")}</div>
     <p class="msg" id="msg" role="status" aria-live="polite"></p>
     <div id="hintbox"></div>
@@ -596,6 +614,7 @@ function play() {
     <div id="after"></div>`;
   $("back").onclick = home;
   document.querySelectorAll(".ch").forEach((b) => (b.onclick = () => choose(+b.dataset.j)));
+  Depth.bindSure(tag, cur.id + "|" + cur.i);
   if ($("hint")) $("hint").onclick = hint;
   if ($("quit")) $("quit").onclick = () => finish(); // 正解の直後でも降りられる（正解は choose の中で保存済みなので endFinish が数える）
   paint();
@@ -615,6 +634,8 @@ function hint() {
   cur.hints++; keep(); paint();
 }
 function setLife() { const l = $("life"), n = lifeOf(); if (l) { l.innerHTML = lifeStr(n); l.setAttribute("aria-label", "のこりの花 " + n); } }
+// この回の「自信あり」の数と当たり（結果の画面に出す。1問につき1回だけ数える）
+function sureCount(ok) { const q = cur.i + ":" + cur.tag; save((s) => { const r = s.runs[MODE]; if (!same(r) || r.dsq === q) return; r.dsq = q; r.ds = r.ds || { n: 0, ok: 0 }; r.ds.n++; if (ok) r.ds.ok++; }); }
 function choose(j) {
   if (cur.done) return;
   const t = cur.P.opts[j];
@@ -622,20 +643,23 @@ function choose(j) {
   if (t !== cur.P.ans) {
     if (cur.wrong.includes(t)) return;
     buzz(40);
+    const jd = Depth.judge(false); if (jd && jd.sure) { cur.jd = jd; sureCount(false); }
     if (MODE === "e") {
       let over = false; save((s) => { const r = s.runs.e; if (!same(r)) return; if ((r.life || 0) > 0) r.life--; else { over = true; r.over = true; } });
       if (over) return lose();
       setLife();
     }
     cur.wrong.push(t); keep(); paint();
-    $("msg").className = "msg bad"; $("msg").textContent = "✕ ちがいます。もう一度どうぞ。";
+    $("msg").className = "msg bad"; $("msg").textContent = "✕ ちがいます。もう一度どうぞ。" + (jd && jd.text ? "　" + jd.text : "");
     return;
   }
   // 正解
+  { const jd = Depth.judge(true); if (jd && jd.sure) { cur.jd = jd; sureCount(true); } }
   cur.done = true; buzz([10, 40, 10]);
-  const P = cur.P; let m = missOf();
+  const P = cur.P; let m = missOf(), marked = false;
   // 別のタブで同じ問題に使ったヒント・まちがいを合わせてから数える（減点を0にしない）
-  const s = save((s) => { const r = s.runs[MODE]; if (!same(r)) return; const was = r.cur && r.cur.i === cur.i && r.cur.tag === cur.tag ? r.cur : null; if (was) { cur.hints = Math.max(cur.hints, was.hints || 0); for (const w of was.wrong || []) if (!cur.wrong.includes(w)) cur.wrong.push(w); } m = missOf(); r.res.push({ m }); r.cur = null; s.dex[P.kind] = (s.dex[P.kind] || 0) + 1; });
+  const s = save((s) => { const r = s.runs[MODE]; if (!same(r)) return; const was = r.cur && r.cur.i === cur.i && r.cur.tag === cur.tag ? r.cur : null; if (was) { cur.hints = Math.max(cur.hints, was.hints || 0); for (const w of was.wrong || []) if (!cur.wrong.includes(w)) cur.wrong.push(w); } m = missOf(); r.res.push({ m }); r.cur = null; s.dex[P.kind] = (s.dex[P.kind] || 0) + 1; marked = true; });
+  if (marked) Depth.mark(cur.tag, m, P.name); // まちがい・ヒントがあれば復習へ、復習中なら次の間へ（同じ問題に保存できたときだけ）
   const st = starsOf(m), r = s.runs[MODE], fin = r && r.res.length >= r.list.length;
   document.querySelectorAll(".ch").forEach((b) => { b.disabled = true; if (P.opts[+b.dataset.j] === P.ans) b.classList.add("ok"); });
   if ($("hint")) $("hint").disabled = true;
@@ -644,6 +668,7 @@ function choose(j) {
   if ($("q")) $("q").removeAttribute("data-a11y-say"); // 答えたあとは、正解の知らせと説明を読む
   $("after").innerHTML = `<div class="verdict" role="status">
     <div class="hd" data-a11y-say>✓ 正解！ ${starStr(st)}</div>
+    ${cur.jd && cur.jd.sure ? `<p class="sure-res">${cur.jd.ok ? "🎯 自信ありで当てた" : "🎯 自信ありでまちがえた。ここを覚えよう"}</p>` : ""}
     <p class="why" data-a11y-say><b>答え：</b>${esc(P.why)}</p>
     ${srcHtml(P)}
     <button class="main ok" id="next">${fin ? "結果を見る" : "次の問題へ"}</button></div>`;
@@ -661,10 +686,12 @@ function lose() {
 
 // 出どころ（公的な資料）へのリンク
 const srcHtml = (P) => `<p class="src">出どころ：${P.src.map((k) => `<a href="${G.SRC[k][1]}" target="_blank" rel="noopener">${esc(G.SRC[k][0])}</a>`).join("・")}</p>`;
+let JUST = null; // 回を終えた直後の結果なら、その回の「自信あり」の数と当たり
 function finish() {
   const s = load(), run = s.runs[MODE];
   if (!run) return home();
   if (run.mode === "e") return endFinish(run);
+  JUST = run.ds || null;
   let first = false, newAch = [];
   const rec = recOf(run);
   save((s2) => {
@@ -673,7 +700,7 @@ function finish() {
     if (Array.isArray(run.a0)) newAch = achGot(s2).filter((id) => !run.a0.includes(id) && !s2.ach[id]);
     for (const id of newAch) s2.ach[id] = 1;
   });
-  if (run.mode === "p") return result("p", run.date, false, { list: run.list, ...rec }, newAch);
+  if (run.mode === "p" || run.mode === "r") return result(run.mode, run.date, false, { list: run.list, ...rec }, newAch);
   result(run.mode, run.date, first, null, newAch);
 }
 // とことんの終わり：解いた数を自己ベストと比べる（他の人との順位は出さない）
@@ -684,6 +711,7 @@ function endFinish(run) {
   app.innerHTML = `
     <header><button class="icon" id="back" aria-label="ホームへ">←</button><h1>薬の袋よみ<small>とことん</small></h1></header>
     <p class="big" id="eres">${n}問 解きました</p>
+    ${run.ds && run.ds.n ? `<p class="note" id="surestat">🎯 自信ありの当たり ${run.ds.ok}/${run.ds.n}</p>` : ""}
     <p class="note" id="ebest">${best ? "🎉 自己ベスト更新！" : `自己ベスト ${s.ebest}問${s.ebest > n ? `（あと${s.ebest - n + 1}問で更新）` : ""}`}</p>
     ${newAch.length ? `<p class="achnew" id="achnew">${newAch.map((id) => `🏅 実績：${ACH.find((a) => a[0] === id)[1]}`).join("<br>")}</p>` : ""}
     <button class="main" id="go-e">もう一度とことん</button>
@@ -697,23 +725,25 @@ const sq = (m) => (m === 0 ? "🟢" : m === 1 ? "🔶" : "🔺");
 function shareText(mode, k, rec) { return `薬の袋よみ${mode === "h" ? " 上級" : ""} 第${dayNo(k)}回 ${md(k)}\n${rec.m.map(sq).join("")}${rec.m.every((m) => m === 0) ? " まちがいなし" : ""}`; }
 function untilNext() { const n = jstNow(), ms = 864e5 - (n.getTime() % 864e5); return `${Math.floor(ms / 36e5)}時間${Math.floor((ms % 36e5) / 6e4)}分`; }
 function result(mode, k, first, prec, newAch = []) {
-  const s = load(), rec = mode === "p" ? prec : bookOf(s, mode)[k];
+  const pr = mode === "p" || mode === "r", ds = JUST || { n: 0, ok: 0 }; JUST = null; // 練習・復習は今日の記録に入れない。自信の当たりは終えた直後だけ出す
+  const s = load(), rec = pr ? prec : bookOf(s, mode)[k];
   if (!rec) return home();
-  const list = mode === "p" ? prec.list : listOf(mode, k), total = rec.m.reduce((a, b) => a + b, 0), late = mode === "a", text = shareText(mode, k, rec);
-  const showKofi = first && mode !== "p" && !late && total === 0 && !s.kofi[k + mode]; // あとから・練習・まちがいのある日には出さない
+  const list = pr ? prec.list : listOf(mode, k), total = rec.m.reduce((a, b) => a + b, 0), late = mode === "a", text = shareText(mode, k, rec);
+  const showKofi = first && !pr && !late && total === 0 && !s.kofi[k + mode]; // あとから・練習・まちがいのある日には出さない
   if (showKofi) save((s2) => { s2.kofi[k + mode] = 1; });
   app.innerHTML = `
-    <header><button class="icon" id="back" aria-label="ホームへ">←</button><h1>薬の袋よみ<small>${mode === "d" ? `今日の5問 第${dayNo(k)}回` : late ? `第${dayNo(k)}回 あとから` : mode === "h" ? "上級" : "練習"}</small></h1></header>
+    <header><button class="icon" id="back" aria-label="ホームへ">←</button><h1>薬の袋よみ<small>${mode === "d" ? `今日の5問 第${dayNo(k)}回` : late ? `第${dayNo(k)}回 あとから` : mode === "h" ? "上級" : mode === "r" ? "復習" : "練習"}</small></h1></header>
     <p class="big">${total === 0 ? "全部まちがいなし！" : `${list.length}問 解きました`}</p>
+    ${ds.n ? `<p class="note" id="surestat">🎯 自信ありの当たり ${ds.ok}/${ds.n}</p>` : ""}
     ${newAch.length ? `<p class="achnew" id="achnew">${newAch.map((id) => `🏅 実績：${ACH.find((a) => a[0] === id)[1]}`).join("<br>")}</p>` : ""}
     ${(() => { const nx = nextAch(s); return nx ? `<p class="achnext" id="achnext">🎯 あと${nx.left}${nx.unit}で「${nx.name}」</p>` : ""; })()}
     <div class="rlist">${list.map((tag, j) => { const P = G.make(tag); return `<div><span>${starStr(starsOf(rec.m[j]))}</span><span class="w"><b>${esc(P.name)}</b>${esc(P.why)}</span></div>`; }).join("")}</div>
     ${late ? `<p class="note">あとから遊んだ日は、カレンダーに ↺ で残ります（続けた日には数えません）。</p><button class="main alt" id="go-cal">カレンダーへ</button>` : ""}
-    ${mode !== "p" && !late ? `<div class="share">${esc(text)}</div>
+    ${!pr && !late ? `<div class="share">${esc(text)}</div>
     <button class="main" id="share">結果をシェア</button>
     <div class="shares"><a id="toX" target="_blank" rel="noopener">Xで投稿</a><a id="toLine" target="_blank" rel="noopener">LINEで送る</a><button id="copy">コピー</button></div>
     <p class="note">🟢まちがいなし　🔶1回　🔺2回以上<br>次の5問まで あと <b>${untilNext()}</b></p>` : ""}
-    ${mode !== "p" ? `<button class="main alt" id="go-e">続けて遊ぶ：とことん${s.ebest ? `（ベスト ${s.ebest}問）` : ""}</button>` : ""}
+    ${!pr ? `<button class="main alt" id="go-e">続けて遊ぶ：とことん${s.ebest ? `（ベスト ${s.ebest}問）` : ""}</button>` : ""}
     ${mode === "d" && k === todayKey() && !s.hdays[k] ? `<button class="main alt" id="go-h">上級：むずかしい3問に挑む</button>` : ""}
     <div class="row"><button class="sub" id="go-p">練習する</button><button class="sub" id="go-dex">ことば帳を見る</button></div>
     ${showKofi ? `<p class="note kofi">楽しめたら、<a href="https://ko-fi.com/satouaaaaa" target="_blank" rel="noopener">Ko-fi でコーヒー1杯の応援</a>をもらえると、新しいゲームづくりの励みになります（任意・遊ぶのはずっと無料）。</p>` : ""}
@@ -722,7 +752,7 @@ function result(mode, k, first, prec, newAch = []) {
   if ($("go-e")) $("go-e").onclick = () => startRun("e");
   if ($("go-h")) $("go-h").onclick = () => (k === todayKey() ? startRun("h") : home());
   if ($("go-cal")) $("go-cal").onclick = () => cal(k.slice(0, 7));
-  if (mode !== "p" && !late) {
+  if (!pr && !late) {
     const withUrl = text + "\n" + SITE;
     $("toX").href = "https://twitter.com/intent/tweet?text=" + encodeURIComponent(withUrl);
     $("toLine").href = "https://line.me/R/share?text=" + encodeURIComponent(withUrl);
@@ -800,7 +830,7 @@ function about() {
   $("back").onclick = home; bindFooter(); toTop();
 }
 
-window.__ky = { mode: () => MODE, load, save, todayKey, dayNo, lateDays, ACH, achGot, nextAch, tally, shareText, streak, endlessList, ELIFE, ERAMP, TIPS, cur: () => cur, play: (m) => { if (m) MODE = m; play(); }, home, cal, book, about, EPOCH, KEY, G };
+window.__ky = { sureCount: (ok) => sureCount(ok), mode: () => MODE, load, save, todayKey, dayNo, lateDays, ACH, achGot, nextAch, tally, shareText, streak, endlessList, ELIFE, ERAMP, TIPS, cur: () => cur, play: (m) => { if (m) MODE = m; play(); }, home, cal, book, about, EPOCH, KEY, G };
 home();
 if ("serviceWorker" in navigator && location.protocol === "https:" && /github\.io$/.test(location.hostname)) navigator.serviceWorker.register("sw.js").catch(() => {});
 </script>
