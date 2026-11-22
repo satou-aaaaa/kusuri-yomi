@@ -15,6 +15,7 @@ import { checkDepth } from "./depth-check.mjs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const results = [];
 const check = (name, ok, detail = "") => results.push({ name, ok: !!ok, detail: String(detail).slice(0, 400) });
+const firstClose = async (q) => { if (await q.locator("#howto[open]").count()) await q.click("#howto-ok"); if (await q.evaluate(() => !!(window.Core && Core.coach && Core.coach.active()))) { await q.evaluate(() => { Core.coach.leave(); scrollTo(0, 0); }); await q.waitForTimeout(100); } }; // はじめての練習の吹き出しをやめてホームへ（sync-template の migrateFirstQa が足した）
 const G = createRequire(import.meta.url)(path.join(root, "gen.js"));
 
 // ---- 1. 問題の作り方（ブラウザを使わない）----
@@ -132,7 +133,7 @@ async function newPage(w = 390, ctx) {
   await p.goto(url); await p.waitForTimeout(200);
   return p;
 }
-const closeHow = async (p) => { if (await p.locator("#howto[open]").count()) await p.click("#howto-ok"); };
+const closeHow = async (p) => { await firstClose(p); };
 const ansIdx = (p) => p.evaluate(() => { const c = __ky.cur(); return c.P.opts.indexOf(c.P.ans); });
 const wrongIdx = (p) => p.evaluate(() => { const c = __ky.cur(); return c.P.opts.findIndex((o) => o !== c.P.ans && !c.wrong.includes(o)); });
 const mem = (p) => p.evaluate(() => JSON.parse(localStorage.getItem("kusuri-v1") || "{}"));
@@ -145,11 +146,12 @@ async function solve(p, { wrong = 0 } = {}) {
 try {
   // はじめて：遊び方が出る・文字の大きさ
   const p = await newPage();
-  check("はじめて開くと遊び方が出る", await p.locator("#howto[open]").count() === 1);
+  check("はじめて開くと遊び方が出る", await p.locator("#core-coach").waitFor({ timeout: 3000 }).then(() => true, () => false));
   check("遊び方にも「医療の相談の代わりではありません」", /医療の相談の代わりではありません/.test(await p.textContent("#howto")));
   check("遊ぶ前の画面に Ko-fi を出さない（結果の画面だけ）", await p.locator('a[href*="ko-fi"]').count() === 0);
+  await firstClose(p);
   check("上級ははじめての日から押せる（今日の5問の前でも）", await p.locator("#go-h").count() === 1);
-  await p.click("#howto-ok");
+  await firstClose(p);
   check("文字の大きさ：はじめは「大きい」（21px）", await p.evaluate(() => getComputedStyle(document.documentElement).fontSize) === "21px");
   await p.click('.fsrow button[data-fs="3"]');
   await p.reload(); await p.waitForTimeout(150);
@@ -410,7 +412,7 @@ try {
   // 遊び方を Esc で閉じても「見た」が残り、開き直すと出ない（shared-workflows incidents/2026-11-07-howto-esc-not-saved.md）
   {
     const q = await newPage();
-    const open = await q.locator("#howto[open]").count() === 1;
+    const open = await q.locator("#core-coach").waitFor({ timeout: 3000 }).then(() => true, () => false);
     await q.keyboard.press("Escape"); await q.waitForTimeout(150);
     await q.reload(); await q.waitForTimeout(200);
     check("遊び方を Esc で閉じても、開き直すと遊び方が出ない", open && await q.locator("#howto[open]").count() === 0);
@@ -484,7 +486,7 @@ try {
 // 引き継ぎコード（shared-workflows template/qa/transfer-check.mjs）
 try {
   const sample = { "kusuri-v1": JSON.stringify({ v: 1, tut: true, days: { "2026-11-07": { m: [0, 1, 0, 0, 2], k: ["shokugo", "mizu", "shokkan", "hokan", "nokori"] } }, hdays: {}, adays: {}, dex: { shokugo: 1, mizu: 1, shokkan: 1, hokan: 1, nokori: 1 }, runs: {}, kofi: {}, ach: {}, ebest: 7, t: 1 }), "kusuri-fs": "3", "kusuri-depth": JSON.stringify({ v: 1, rv: { "shokugo|x1": { s: 1, due: "2026-11-20", t: 5 } } }) }; // 復習の記録も引き継ぐかを見る
-  await checkTransfer({ browser, url, game: "kusuri-yomi", sample, check, open: async (pg) => { if (await pg.locator("#howto[open]").count()) await pg.click("#howto-ok"); } });
+  await checkTransfer({ browser, url, game: "kusuri-yomi", sample, check, open: async (pg) => { await firstClose(pg); } });
 } catch (e) { check("引き継ぎの検査が最後まで動く", false, e.message.split("\n")[0]); }
 await browser.close();
 server.close();
