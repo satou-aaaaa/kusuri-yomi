@@ -85,14 +85,16 @@ const near = (t, f, u) => { const [lo, hi] = WIN[t](f); return u >= lo - 15 && u
 
 // ---- 2. ファイルの中身 ----
 const html = readFileSync(path.join(root, "index.html"), "utf8"), gen = readFileSync(path.join(root, "gen.js"), "utf8");
+// ひな形の写し（<!-- 名前:begin〜end -->）はゲームの言葉ではないので外し、Core.kofi・Core.KOFI は写す前の形にもどして見る（shared-workflows の sync-template が足した）
+const gameOwn = (t) => t.replace(/<!-- ([a-z0-9-]+):begin[\s\S]*?<!-- \1:end -->/g, "").split("${Core.KOFI}").join("https://ko-fi.com/satouaaaaa").replace(/Core\.kofi\(("(?:[^"\\]|\\.)*"), ("(?:[^"\\]|\\.)*")\)/g, (m, a, b) => "`<p class=\"note kofi\">" + JSON.parse(a) + "、<a href=\"https://ko-fi.com/satouaaaaa\" target=\"_blank\" rel=\"noopener\">Ko-fi でコーヒー1杯の応援</a>をもらえると、" + JSON.parse(b) + "の励みになります（任意・遊ぶのはずっと無料）。</p>`");
 const ext = [...html.matchAll(/(?:src|href)="(https?:[^"]+)"/g)].map((m) => m[1]).filter((u) => !/^https:\/\/fonts\.googleapis\.com(\/|$)|^https:\/\/ko-fi\.com\/satouaaaaa$|^https:\/\/(www\.city\.(sendai|sakai|nagano\.nagano)|toyaku\.or|www\.pref\.yamagata)\./.test(u));
 check("外から読むのは文字（Google Fonts）だけ。スクリプト・広告・解析を入れない（出典のリンクは押したときに開くだけ）", ext.length === 0 && ![...html.matchAll(/<script[^>]+src="([^"]+)"/g)].some((m) => /^https?:/.test(m[1])), ext.join(","));
 check("CSP で通信先を自分だけにしている", /connect-src 'self'/.test(html) && !/connect-src[^;"]*https/.test(html));
 check("Math.random は練習・とことんの種だけ（今日の5問・上級は日付の乱数。gen.js には無い）", (html.match(/Math\.random/g) || []).length === 2 && !/Math\.random/.test(gen));
 check("乱数は sort の比較の中で引かない（ブラウザで引く回数が変わる）", !/\.sort\(\s*\([^)]*\)\s*=>[^\n;]*\b(R|rng|rand|Math\.random)\s*\(/.test(html + gen));
 check("一行の式の途中にコメント // を足さない（行の残りが消える。rosen-hitofude 2026-11-04）", !/;\s*\/\/[^\n]*;\s*\w/.test(gen.split("\n").filter((l) => !l.trim().startsWith("//")).join("\n")));
-check("言い方：薬の効き目・治ることをうたわない（薬の名前・病気の名前で答えを決めない）", !/よく効く薬|治りま|治せ|効果があります|予防でき|飲めば安心/.test(html + gen.replace(/たくさん飲むほど よく効く/g, "") + readFileSync(path.join(root, "README.md"), "utf8")));
-check("言い方：「このゲームについて」と遊び方に、本当の薬は医師・薬剤師の指示と説明書に従うこと・医療の相談の代わりではないこと", /医師・薬剤師の指示と、薬の説明書に従って/.test(html) && /医療の相談の代わりではありません/.test(html) && (html.match(/医師・薬剤師の指示/g) || []).length >= 2);
+check("言い方：薬の効き目・治ることをうたわない（薬の名前・病気の名前で答えを決めない）", !/よく効く薬|治りま|治せ|効果があります|予防でき|飲めば安心/.test(gameOwn(html) + gen.replace(/たくさん飲むほど よく効く/g, "") + readFileSync(path.join(root, "README.md"), "utf8")));
+check("言い方：「このゲームについて」と遊び方に、本当の薬は医師・薬剤師の指示と説明書に従うこと・医療の相談の代わりではないこと", /医師・薬剤師の指示と、薬の説明書に従って/.test(gameOwn(html)) && /医療の相談の代わりではありません/.test(gameOwn(html)) && (gameOwn(html).match(/医師・薬剤師の指示/g) || []).length >= 2);
 check("出どころは公的な資料（自治体・都道府県・薬剤師会）だけ", Object.values(G.SRC).every(([, u]) => /^https:\/\/(www\.city\.[a-z.]+\.jp|www\.pref\.[a-z]+\.jp|toyaku\.or\.jp)\//.test(u)) && G.KINDS.every((k) => G.make(k.id + "|src").src.length >= 1));
 check("画面にお笑いの言葉を入れない（本物っぽく）", !/お笑い|ギャグ|ツッコミ|なんでやねん|（うそ）/.test(html));
 check("引き継ぎ：transfer.js をゲームの script より前に、このゲームの記録のキー（記録・文字・復習）だけで読む・depth.js も前に読む", /<script src="transfer\.js" data-game="kusuri-yomi" data-keys="kusuri-v1,kusuri-fs,kusuri-depth"><\/script>\s*<script src="depth\.js" data-game="kusuri-yomi" data-key="kusuri-depth"><\/script>\s*<\/head>/.test(html) && html.indexOf('src="transfer.js"') < html.indexOf('src="gen.js"') && /data-hk/.test(html) && existsSync(path.join(root, "transfer.js")));
@@ -155,7 +157,7 @@ try {
   check("文字の大きさ：はじめは「大きい」（21px）", await p.evaluate(() => getComputedStyle(document.documentElement).fontSize) === "21px");
   await p.click('.fsrow button[data-fs="3"]');
   await p.reload(); await p.waitForTimeout(150);
-  await p.evaluate(() => localStorage.setItem("kusuri-fs", "2.5")); await p.reload(); await p.waitForTimeout(150);
+  await p.evaluate(() => (localStorage.setItem("kusuri-fs", "2.5"), localStorage.setItem("a11y-v1", JSON.stringify({ ...JSON.parse(localStorage.getItem("a11y-v1") || "{}"), fs: undefined })))); await p.reload(); await p.waitForTimeout(150);
   check("文字の大きさ：1・2・3 以外（2.5 など）は「大きい」にもどす", await p.evaluate(() => getComputedStyle(document.documentElement).fontSize) === "21px");
   await p.click('.fsrow button[data-fs="3"]'); await p.reload(); await p.waitForTimeout(150);
   check("文字の大きさ：「とても大きい」にすると開き直しても残る", await p.evaluate(() => getComputedStyle(document.documentElement).fontSize) === "25px" && await p.locator('.fsrow button[data-fs="3"][aria-pressed="true"]').count() === 1);
@@ -375,7 +377,7 @@ try {
     const bad = [], small = [];
     for (const [w, fs] of [[320, 3], [390, 2], [320, 1]]) {
       const q = await newPage(w); await closeHow(q);
-      await q.evaluate((fs) => localStorage.setItem("kusuri-fs", String(fs)), fs); await q.reload(); await q.waitForTimeout(150);
+      await q.evaluate((fs) => (localStorage.setItem("kusuri-fs", String(fs)), localStorage.setItem("a11y-v1", JSON.stringify({ ...JSON.parse(localStorage.getItem("a11y-v1") || "{}"), fs: undefined }))), fs); await q.reload(); await q.waitForTimeout(150);
       for (const go of [null, "#go-d", "solve", "#go-cal", "#go-dex", "#go-ach", "#go-e"]) {
         if (go === "solve") { await solve(q); }
         else if (go) { await q.goto(url); await q.waitForTimeout(100); await q.click(go); }
