@@ -32,4 +32,6 @@ jobs:
       # （2026-11-04 incidents/2026-11-04-link-check-readme-only-main.md）
       files: '*.html README.md'
       # 自分たちの公開ページ（*.github.io）は各リポジトリの site-watch が毎日見張る。初めて公開する前の PR では 404 になるので、ここでは調べない
-      exclude: '^https://satou-aaaaa\.github\.io/'
+      # 仙台市のサイトは GitHub の実行機からだと生きているページも 404 を返す（2026-11-26〜27 に3回続けて 404、同じ URL は検索・ブラウザでは開ける。
+      # shared-workflows incidents/2026-11-27-qa-apt-keep-breaks-order.md）。このホストだけ外す
+      exclude: '^https://satou-aaaaa\.github\.io/ ^https://www\.city\.sendai\.jp/'
